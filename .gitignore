@@ -1,0 +1,12 @@
+data/
+*.pth
+checkpoints/
+logs/
+outputs/
+__pycache__/
+*.pyc
+venv/
+.env
+.DS_Store
+EOT
+pred_epoch_1.png
