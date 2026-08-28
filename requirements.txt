@@ -1,0 +1,7 @@
+transformers
+opencv-python
+numpy
+matplotlib
+Pillow
+tqdm
+PyYAML
