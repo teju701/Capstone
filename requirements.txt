@@ -1,7 +1,26 @@
-transformers
-opencv-python
-numpy
-matplotlib
-Pillow
-tqdm
-PyYAML
+# PyTorch CUDA 12.8 index URL for GPU acceleration
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+# Core Deep Learning Framework (GPU / CUDA 12.8)
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+
+# HuggingFace & Vision Transformers
+transformers==5.15.1
+huggingface_hub==1.28.0
+safetensors==0.8.0
+tokenizers==0.22.2
+
+# Image Processing & Computer Vision
+opencv-python==5.0.0.93
+Pillow==12.3.0
+
+# Scientific Computing & Data Processing
+numpy==2.4.6
+
+# Visualization & Plotting
+matplotlib==3.11.1
+
+# Progress Bars & Configuration
+tqdm==4.70.0
+PyYAML==6.0.3
