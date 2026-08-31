@@ -6,7 +6,6 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from torch.cuda.amp import autocast, GradScaler
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -21,10 +20,12 @@ from models.depth_model import DepthModel
 # ─────────────────────────────────────────
 DEVICE      = "cuda" if torch.cuda.is_available() else "cpu"
 IMG_SIZE    = (1024, 2048)   # Native Cityscapes resolution (H=1024, W=2048)
-BATCH_SIZE  = 1
-ACCUM_STEPS = 8              # Effective batch size = 8
+BATCH_SIZE  = 2              # Physical mini-batch size on GPU
+ACCUM_STEPS = 2              # Gradient accumulation steps
+EFF_BATCH   = BATCH_SIZE * ACCUM_STEPS  # = 4 (Effective batch size)
+
 LR          = 6e-5
-EPOCHS      = 30
+EPOCHS      = 40
 SAVE_BEST   = "checkpoints/depth/best_depth_model.pth"
 SAVE_LAST   = "checkpoints/depth/last_depth_checkpoint.pth"
 LOG_DIR     = "logs/depth"
@@ -109,10 +110,14 @@ def save_depth_prediction(pred: torch.Tensor, epoch: int) -> None:
 # Main
 # ─────────────────────────────────────────
 def main():
-    print(f"[INFO] Resolution  : {IMG_SIZE[0]}×{IMG_SIZE[1]} (Native 1:2 Aspect Ratio)")
-    print(f"[INFO] Batch size  : {BATCH_SIZE} (accumulation × {ACCUM_STEPS} = effective {BATCH_SIZE*ACCUM_STEPS})")
-    print(f"[INFO] Device      : {DEVICE}")
-    print(f"[INFO] Depth range : normalised [0,1] = [{MIN_DEPTH}, {MAX_DEPTH}] metres\n")
+    print(f"[INFO] Resolution      : {IMG_SIZE[0]}×{IMG_SIZE[1]} (Native 1:2 Aspect Ratio)")
+    print(f"[INFO] Physical Batch  : {BATCH_SIZE} on GPU")
+    print(f"[INFO] Accumulation    : × {ACCUM_STEPS} steps")
+    print(f"[INFO] Effective Batch : {EFF_BATCH}")
+    print(f"[INFO] Epochs          : {EPOCHS}")
+    print(f"[INFO] Learning Rate   : {LR}")
+    print(f"[INFO] Device          : {DEVICE}")
+    print(f"[INFO] Depth range     : normalised [0,1] = [{MIN_DEPTH}, {MAX_DEPTH}] metres\n")
 
     # ── Datasets ──────────────────────────
     train_ds = CityscapesDataset("data/cityscapes", "train", img_size=IMG_SIZE)
@@ -134,7 +139,7 @@ def main():
     # ── Loss, Optimiser, Scaler, Scheduler 
     criterion = BerHuLoss(threshold=0.2)
     optimizer = AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
-    scaler    = GradScaler()
+    scaler    = torch.amp.GradScaler('cuda')
     scheduler = CosineAnnealingLR(optimizer, T_max=EPOCHS, eta_min=1e-6)
 
     if not os.path.exists(LOG_CSV):
@@ -171,7 +176,7 @@ def main():
             img    = batch["image"].to(DEVICE)
             target = batch["depth"].to(DEVICE)
 
-            with autocast():
+            with torch.amp.autocast('cuda'):
                 pred = model(img)
                 loss = criterion(pred, target) / ACCUM_STEPS
 
@@ -201,7 +206,7 @@ def main():
                 img    = batch["image"].to(DEVICE)
                 target = batch["depth"].to(DEVICE)
 
-                with autocast():
+                with torch.amp.autocast('cuda'):
                     pred = model(img)
 
                 absrel_sum += abs_rel(pred, target)
