@@ -13,21 +13,21 @@ from utils.depth_utils import disparity_to_depth
 
 class CityscapesDataset(Dataset):
     """
-    Cityscapes dataset loader for segmentation and depth.
+    Cityscapes dataset loader for semantic segmentation and monocular depth estimation.
 
-    Default resolution: 1024×1024 (square crop — matches the pretrained
-    SegFormer-B2 checkpoint: nvidia/segformer-b2-finetuned-cityscapes-1024-1024)
+    Native resolution: 1024×2048 (H=1024, W=2048) — exactly preserves original 1:2 aspect ratio
+    and native sensor pixel grid without spatial distortion.
 
-    Augmentation (train only):
+    Augmentation (train split only):
         - Random scale in [0.5, 2.0] + random crop to img_size
-        - Random horizontal flip
-        - Color jitter (brightness, contrast, saturation, hue)
+        - Random horizontal flip (synchronized across RGB, seg, depth)
+        - Color jitter (brightness, contrast, saturation, hue — RGB only)
     """
 
-    def __init__(self, root, split='train', img_size=(1024, 1024)):
+    def __init__(self, root, split='train', img_size=(1024, 2048)):
         self.root     = root
         self.split    = split
-        self.img_size = img_size          # (H, W)
+        self.img_size = img_size          # (H, W) -> (1024, 2048)
 
         self.images      = []
         self.masks       = []
@@ -103,22 +103,25 @@ class CityscapesDataset(Dataset):
     # ── __getitem__ ───────────────────────────────────────────────────────────
 
     def __getitem__(self, idx):
-        # 1. Load RGB — resize to img_size first so scale-crop has a base
+        # 1. Load RGB
         img = cv2.imread(self.images[idx])
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = cv2.resize(img, (self.img_size[1], self.img_size[0]),
-                         interpolation=cv2.INTER_LINEAR)
+        if (img.shape[0], img.shape[1]) != (self.img_size[0], self.img_size[1]):
+            img = cv2.resize(img, (self.img_size[1], self.img_size[0]),
+                             interpolation=cv2.INTER_LINEAR)
 
         # 2. Segmentation mask
         mask = cv2.imread(self.masks[idx], cv2.IMREAD_GRAYSCALE)
-        mask = cv2.resize(mask, (self.img_size[1], self.img_size[0]),
-                          interpolation=cv2.INTER_NEAREST)
+        if (mask.shape[0], mask.shape[1]) != (self.img_size[0], self.img_size[1]):
+            mask = cv2.resize(mask, (self.img_size[1], self.img_size[0]),
+                              interpolation=cv2.INTER_NEAREST)
         mask = encode_segmap(mask)
 
         # 3. Disparity → depth
         disp  = cv2.imread(self.disparities[idx], cv2.IMREAD_UNCHANGED)
-        disp  = cv2.resize(disp, (self.img_size[1], self.img_size[0]),
-                           interpolation=cv2.INTER_NEAREST)
+        if (disp.shape[0], disp.shape[1]) != (self.img_size[0], self.img_size[1]):
+            disp  = cv2.resize(disp, (self.img_size[1], self.img_size[0]),
+                               interpolation=cv2.INTER_NEAREST)
         depth = disparity_to_depth(disp)
 
         # ── TRAIN AUGMENTATIONS ───────────────────────────────────────────────

@@ -1,0 +1,35 @@
+==================================================================
+       SEGMENTATION BASELINE -- OFFICIAL EVALUATION REPORT
+       Cityscapes Val Set  |  500 images  |  1024x2048
+==================================================================
+  Checkpoint : checkpoints/segmentation/best_seg_model.pth
+  Classes    : 19  (ignore index = 255)
+------------------------------------------------------------------
+  Class Name         |   Standard IoU |        TTA IoU
+------------------------------------------------------------------
+  road               |         98.40% |         98.37%
+  sidewalk           |         86.71% |         86.53%
+  building           |         93.04% |         93.22%
+  wall               |         62.05% |         64.23%
+  fence              |         61.07% |         61.60%
+  pole               |         66.25% |         66.71%
+  traffic light      |         71.57% |         72.02%
+  traffic sign       |         79.99% |         80.25%
+  vegetation         |         92.94% |         93.00%
+  terrain            |         64.42% |         64.75%
+  sky                |         95.25% |         95.29%
+  person             |         82.94% |         83.10%
+  rider              |         62.85% |         62.97%
+  car                |         95.21% |         95.25%
+  truck              |         84.15% |         84.47%
+  bus                |         88.17% |         88.35%
+  train              |         81.77% |         81.75%
+  motorcycle         |         69.15% |         69.70%
+  bicycle            |         78.12% |         78.35%
+==================================================================
+  Overall mIoU (Standard) : 0.7969  (79.69%)
+  Overall mIoU (+ TTA)    : 0.8000  (80.00%)  <- Primary
+  TTA Improvement Gain    : +0.0031  (+0.31%)
+==================================================================
+  Evaluation Protocol: Global Dataset Accumulation (Official Benchmark)
+==================================================================

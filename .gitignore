@@ -1,7 +1,7 @@
 data/
 *.pth
 checkpoints/
-logs/
+logs/*/predictions/
 outputs/
 __pycache__/
 *.pyc

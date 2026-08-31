@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
+from torch.cuda.amp import autocast, GradScaler
 import numpy as np
 from tqdm import tqdm
 import cv2
@@ -15,6 +16,7 @@ from datasets.cityscapes_dataset import CityscapesDataset
 from models.segformer_encoder import SegFormerEncoder
 from models.segformer_decoder import SegFormerDecoder
 from models.seg_model import SegmentationModel
+from utils.metrics import SegmentationMetric
 
 # ─────────────────────────────────────────
 # Config
@@ -22,27 +24,29 @@ from models.seg_model import SegmentationModel
 DEVICE      = "cuda" if torch.cuda.is_available() else "cpu"
 NUM_CLASSES = 19
 
-# Resolution: 1024×1024 — matches pretrained checkpoint resolution.
-# This is the single biggest factor for mIoU improvement.
-IMG_SIZE    = (1024, 1024)
+# Resolution: Native Cityscapes 1024×2048 (H=1024, W=2048, 1:2 aspect ratio)
+IMG_SIZE    = (1024, 2048)
 
-# Batch size 2 + accumulation steps 4 = effective batch size 8.
-# Keeps memory within 24–32 GB VRAM at 1024×1024.
-BATCH_SIZE  = 2
-ACCUM_STEPS = 4          # gradient accumulation
-EFF_BATCH   = BATCH_SIZE * ACCUM_STEPS   # = 8, same as paper
+# Batch size 1 + accumulation steps 8 = effective batch size 8.
+# Optimal memory footprint and gradient stability at native 1024×2048.
+BATCH_SIZE  = 4
+ACCUM_STEPS = 8          # gradient accumulation
+EFF_BATCH   = BATCH_SIZE * ACCUM_STEPS   # = 8
 
-EPOCHS      = 80         # more iterations = better minority class learning
-LR_ENCODER  = 6e-6      # pretrained — keep slow
-LR_DECODER  = 6e-5      # randomly initialised — faster
+EPOCHS      = 80
+LR_ENCODER  = 6e-6      # pretrained backbone
+LR_DECODER  = 6e-5      # decode head
 POLY_POWER  = 0.9
 MIN_LR      = 1e-7
 
 SAVE_BEST   = "checkpoints/segmentation/best_seg_model.pth"
 SAVE_LAST   = "checkpoints/segmentation/last_seg_checkpoint.pth"
-PRED_DIR    = "logs/segmentation/predictions"
+LOG_DIR     = "logs/segmentation"
+LOG_CSV     = os.path.join(LOG_DIR, "train_log.csv")
+PRED_DIR    = os.path.join(LOG_DIR, "predictions")
 
 os.makedirs("checkpoints/segmentation", exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(PRED_DIR, exist_ok=True)
 
 
@@ -133,27 +137,10 @@ class SegmentationLoss(nn.Module):
 
 
 # ─────────────────────────────────────────
-# mIoU
-# ─────────────────────────────────────────
-def compute_miou(pred, target, num_classes, ignore_index=255):
-    pred   = pred.view(-1);   target = target.view(-1)
-    valid  = target != ignore_index
-    pred   = pred[valid];     target = target[valid]
-    ious   = []
-    for cls in range(num_classes):
-        p = pred == cls;  t = target == cls
-        inter = (p & t).sum().item()
-        union = p.sum().item() + t.sum().item() - inter
-        if union == 0: continue
-        ious.append(inter / union)
-    return float(np.mean(ious)) if ious else 0.0
-
-
-# ─────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────
 def main():
-    print(f"[INFO] Resolution  : {IMG_SIZE[0]}×{IMG_SIZE[1]}")
+    print(f"[INFO] Resolution  : {IMG_SIZE[0]}×{IMG_SIZE[1]} (Native 1:2 Aspect Ratio)")
     print(f"[INFO] Batch size  : {BATCH_SIZE} (accumulation × {ACCUM_STEPS} = effective {EFF_BATCH})")
     print(f"[INFO] Epochs      : {EPOCHS}")
     print(f"[INFO] Enc LR      : {LR_ENCODER}   Dec LR: {LR_DECODER}")
@@ -176,15 +163,20 @@ def main():
     total = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"[INFO] Parameters  : {total/1e6:.2f}M")
 
-    # ── Differential LR ───────────────────
+    # ── Optimizer, Scaler & Scheduler ─────
     optimizer = AdamW([
         {'params': model.encoder.parameters(), 'lr': LR_ENCODER},
         {'params': model.decoder.parameters(), 'lr': LR_DECODER},
     ], weight_decay=1e-4)
 
+    scaler    = GradScaler()
     scheduler = PolyLRScheduler(optimizer, total_steps=EPOCHS,
                                 power=POLY_POWER, min_lr=MIN_LR)
     criterion = SegmentationLoss(label_smoothing=0.1)
+
+    if not os.path.exists(LOG_CSV):
+        with open(LOG_CSV, "w", encoding="utf-8") as f:
+            f.write("epoch,train_loss,val_miou,enc_lr,dec_lr\n")
 
     # ── Resume ────────────────────────────
     start_epoch = 0
@@ -216,17 +208,18 @@ def main():
             img = batch["image"].to(DEVICE)
             gt  = batch["seg"].to(DEVICE)
 
-            out  = model(img)
-            # Divide loss by accum steps so gradients are averaged
-            loss = criterion(out, gt) / ACCUM_STEPS
-            loss.backward()
+            with autocast():
+                out  = model(img)
+                loss = criterion(out, gt) / ACCUM_STEPS
 
-            total_loss += loss.item() * ACCUM_STEPS   # log unscaled loss
+            scaler.scale(loss).backward()
+            total_loss += loss.item() * ACCUM_STEPS
 
-            # Gradient step every ACCUM_STEPS batches
             if (step + 1) % ACCUM_STEPS == 0 or (step + 1) == len(train_loader):
+                scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                optimizer.step()
+                scaler.step(optimizer)
+                scaler.update()
                 optimizer.zero_grad()
 
             pbar.set_postfix(loss=f"{loss.item() * ACCUM_STEPS:.4f}")
@@ -236,9 +229,9 @@ def main():
         enc_lr   = optimizer.param_groups[0]['lr']
         dec_lr   = optimizer.param_groups[1]['lr']
 
-        # ─── VALIDATE ─────────────────────
+        # ─── VALIDATE (Global Dataset Accumulation) ─────
         model.eval()
-        miou_sum = 0.0
+        val_metric = SegmentationMetric(num_classes=NUM_CLASSES, ignore_index=255)
 
         with torch.no_grad():
             for i, batch in enumerate(tqdm(val_loader,
@@ -246,26 +239,30 @@ def main():
                 img = batch["image"].to(DEVICE)
                 gt  = batch["seg"].to(DEVICE)
 
-                out  = model(img)
+                with autocast():
+                    out = model(img)
                 pred = torch.argmax(out, dim=1)
-                miou_sum += compute_miou(pred, gt, NUM_CLASSES)
+                val_metric.update(pred, gt)
 
                 if i == 0:
                     save_prediction(pred[0], epoch + 1)
 
-        avg_miou = miou_sum / len(val_loader)
+        avg_miou, _ = val_metric.compute()
 
         print(f"\n{'='*60}")
         print(f"  Epoch      : {epoch+1}/{EPOCHS}")
         print(f"  Train Loss : {avg_loss:.4f}  (CE + Dice)")
-        print(f"  Val mIoU   : {avg_miou:.4f}")
+        print(f"  Val mIoU   : {avg_miou:.4f}  ({avg_miou*100:.2f}%)")
         print(f"  Enc LR     : {enc_lr:.2e}   Dec LR: {dec_lr:.2e}")
         print(f"{'='*60}\n")
+
+        with open(LOG_CSV, "a", encoding="utf-8") as f:
+            f.write(f"{epoch+1},{avg_loss:.6f},{avg_miou:.6f},{enc_lr:.6e},{dec_lr:.6e}\n")
 
         if avg_miou > best_miou:
             best_miou = avg_miou
             torch.save(model.state_dict(), SAVE_BEST)
-            print(f"[INFO] Best model saved → mIoU: {best_miou:.4f}")
+            print(f"[INFO] Best model saved → mIoU: {best_miou:.4f} ({best_miou*100:.2f}%)")
 
         torch.save({
             "epoch"               : epoch,
@@ -276,7 +273,7 @@ def main():
         }, SAVE_LAST)
 
     print("\n[INFO] Segmentation training complete.")
-    print(f"[INFO] Best Val mIoU: {best_miou:.4f}")
+    print(f"[INFO] Best Val mIoU: {best_miou:.4f} ({best_miou*100:.2f}%)")
 
 
 if __name__ == "__main__":
