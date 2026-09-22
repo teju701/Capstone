@@ -104,12 +104,20 @@ function setupEventListeners() {
         if (viewer3D) viewer3D.setPointSize(size);
     });
 
-    document.getElementById('btn-reset-3d').addEventListener('click', () => {
-        if (viewer3D) viewer3D.resetCamera();
+    document.getElementById('btn-follow-view').addEventListener('click', () => {
+        if (viewer3D) viewer3D.setFollowView();
+    });
+
+    document.getElementById('btn-cockpit-view').addEventListener('click', () => {
+        if (viewer3D) viewer3D.setCockpitView();
     });
 
     document.getElementById('btn-bev-view').addEventListener('click', () => {
         if (viewer3D) viewer3D.setBEVView();
+    });
+
+    document.getElementById('btn-reset-3d').addEventListener('click', () => {
+        if (viewer3D) viewer3D.setFollowView();
     });
 
     selectResolution.addEventListener('change', () => {

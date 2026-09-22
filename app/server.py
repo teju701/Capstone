@@ -127,34 +127,40 @@ def array_to_base64_png(arr: np.ndarray) -> str:
 def generate_point_cloud_3d(rgb_img: np.ndarray, depth_meters: np.ndarray, class_mask: np.ndarray, step: int = 6):
     """
     Back-projects 2D pixels (u, v) with metric depth Z into 3D camera coordinates (X, Y, Z).
-    Downsampled by `step` for 60 FPS WebGL browser rendering.
+    - Calibrated to Daimler/Cityscapes camera intrinsics (fx ≈ 1.105 * W).
+    - Ground-aligned: Road surface sits naturally at Y = 0.0m.
+    - Filters infinite sky pixels (class 10) and far outliers (>65m) for crisp LiDAR-like 3D points.
     """
     H, W = depth_meters.shape
-    fx = 0.58 * W
+    fx = 1.105 * W
     fy = fx
     cx = W / 2.0
     cy = H / 2.0
 
-    # Subsample grid
+    # Subsample grid for 60 FPS WebGL rendering
     ys, xs = np.mgrid[0:H:step, 0:W:step]
     ys_flat = ys.flatten()
     xs_flat = xs.flatten()
 
     z = depth_meters[ys_flat, xs_flat]
-    valid = z < 75.0  # filter sky / extreme background points for clean mesh
+    c_ids_flat = class_mask[ys_flat, xs_flat]
+
+    # Filter out Sky (class 10) and distant outliers (>65m)
+    valid = (z < 65.0) & (c_ids_flat != 10)
 
     x_val = xs_flat[valid]
     y_val = ys_flat[valid]
     z_val = z[valid]
+    c_ids = c_ids_flat[valid]
 
+    # 3D unprojection (Camera mounted at ~1.22m height above road surface)
     X = (x_val - cx) * z_val / fx
-    Y = -(y_val - cy) * z_val / fy  # inverted for Three.js coordinates
-    Z = -z_val                       # forward in Three.js is -Z
+    Y = -(y_val - cy) * z_val / fy + 1.22  # Ground-plane normalized: Road at Y ≈ 0.0m
+    Z = -z_val                             # Forward into scene is -Z
 
     r = rgb_img[y_val, x_val, 0] / 255.0
     g = rgb_img[y_val, x_val, 1] / 255.0
     b = rgb_img[y_val, x_val, 2] / 255.0
-    c_ids = class_mask[y_val, x_val]
 
     # Return structured interleaved array
     points = []

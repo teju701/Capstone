@@ -1,8 +1,9 @@
 /**
  * viewer3d.js
  * ───────────
- * Real-Time Three.js WebGL 3D Point Cloud & Scene Visualizer.
- * Supports Orbit Controls, BEV camera view, and dynamic colormaps.
+ * Real-Time Three.js WebGL 3D Point Cloud & Autonomous Driving Scene Visualizer.
+ * Supports Driver Cockpit POV, 3rd-Person Follow Cam, Bird's Eye View (BEV),
+ * and dynamic RGB/Semantic/Depth color modes.
  */
 
 class PointCloudViewer {
@@ -13,33 +14,64 @@ class PointCloudViewer {
         this.renderer = null;
         this.controls = null;
         this.pointsMesh = null;
+        this.egoVehicle = null;
         this.rawPointData = null;
         this.currentMode = 'rgb'; // 'rgb' | 'seg' | 'depth'
-        this.pointSize = 3.0;
-        this.isBEV = false;
+        this.pointSize = 3.5;
+        this.currentView = 'follow'; // 'follow' | 'cockpit' | 'bev'
 
         this.init();
     }
 
     init() {
         const width = this.container.clientWidth || 600;
-        const height = this.container.clientHeight || 300;
+        const height = this.container.clientHeight || 320;
 
         // 1. Scene
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x05070d);
+        this.scene.fog = new THREE.FogExp2(0x05070d, 0.015);
 
-        // Grid floor helper
-        const grid = new THREE.GridHelper(60, 30, 0x06b6d4, 0x1e293b);
-        grid.position.y = -2.5;
+        // Ground Plane Grid (Y = 0.0m matches road surface)
+        const grid = new THREE.GridHelper(80, 40, 0x00f0ff, 0x1e293b);
+        grid.position.y = 0.0;
         this.scene.add(grid);
 
-        // 2. Camera (Driver ego-perspective)
-        this.camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 200);
-        this.resetCamera();
+        // Ego-Vehicle representation (Wireframe bounding box representing autonomous vehicle)
+        const egoGroup = new THREE.Group();
+        const carGeo = new THREE.BoxGeometry(1.8, 1.4, 4.2);
+        const carMat = new THREE.MeshBasicMaterial({
+            color: 0x00f0ff,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.55
+        });
+        const carMesh = new THREE.Mesh(carGeo, carMat);
+        carMesh.position.set(0, 0.7, 1.2);
+        egoGroup.add(carMesh);
+
+        // Headlight direction cones / rays
+        const rayMat = new THREE.LineBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.35 });
+        const rayGeo1 = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(-0.7, 0.6, -0.9),
+            new THREE.Vector3(-1.8, 0.1, -10.0)
+        ]);
+        const rayGeo2 = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0.7, 0.6, -0.9),
+            new THREE.Vector3(1.8, 0.1, -10.0)
+        ]);
+        egoGroup.add(new THREE.Line(rayGeo1, rayMat));
+        egoGroup.add(new THREE.Line(rayGeo2, rayMat));
+
+        this.egoVehicle = egoGroup;
+        this.scene.add(this.egoVehicle);
+
+        // 2. Perspective Camera
+        this.camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 200);
+        this.setFollowView();
 
         // 3. WebGL Renderer
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
         this.renderer.setSize(width, height);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.container.appendChild(this.renderer.domElement);
@@ -48,8 +80,9 @@ class PointCloudViewer {
         this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.08;
-        this.controls.maxDistance = 100;
-        this.controls.minDistance = 1;
+        this.controls.maxDistance = 90;
+        this.controls.minDistance = 0.5;
+        this.controls.target.set(0, 0.5, -14);
 
         // Window resize listener
         window.addEventListener('resize', () => this.onResize());
@@ -59,18 +92,31 @@ class PointCloudViewer {
         requestAnimationFrame(this.animate);
     }
 
-    resetCamera() {
-        this.isBEV = false;
-        this.camera.position.set(0, 1.2, 3.5);
-        this.camera.lookAt(0, 0, -15);
-        if (this.controls) this.controls.target.set(0, 0, -15);
+    setFollowView() {
+        this.currentView = 'follow';
+        this.camera.position.set(0, 3.2, 6.5);
+        if (this.controls) {
+            this.controls.target.set(0, 0.5, -14);
+            this.controls.update();
+        }
+    }
+
+    setCockpitView() {
+        this.currentView = 'cockpit';
+        this.camera.position.set(0, 1.2, 0.2);
+        if (this.controls) {
+            this.controls.target.set(0, 1.0, -18);
+            this.controls.update();
+        }
     }
 
     setBEVView() {
-        this.isBEV = true;
-        this.camera.position.set(0, 35, -20);
-        this.camera.lookAt(0, 0, -20);
-        if (this.controls) this.controls.target.set(0, 0, -20);
+        this.currentView = 'bev';
+        this.camera.position.set(0, 32, -15);
+        if (this.controls) {
+            this.controls.target.set(0, 0, -15.01);
+            this.controls.update();
+        }
     }
 
     onResize() {
@@ -126,11 +172,11 @@ class PointCloudViewer {
                 cg = cMeta.color[1] / 255.0;
                 cb = cMeta.color[2] / 255.0;
             } else if (this.currentMode === 'depth') {
-                // Elevation / distance ramp (red near -> cyan mid -> blue far)
+                // Distance color ramp (Red <5m -> Yellow 5-15m -> Green 15-30m -> Cyan/Blue >30m)
                 const normD = Math.min(Math.max((distMeters - 1.0) / 45.0, 0.0), 1.0);
-                cr = Math.sin(normD * Math.PI);
-                cg = Math.sin(normD * Math.PI * 0.7);
-                cb = 1.0 - normD;
+                cr = Math.max(0.0, 1.0 - normD * 2.0);
+                cg = Math.min(normD * 2.0, 2.0 - normD * 2.0);
+                cb = Math.max(0.0, (normD - 0.5) * 2.0);
             }
 
             colors[i * 3 + 0] = cr;
@@ -143,7 +189,7 @@ class PointCloudViewer {
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
         const material = new THREE.PointsMaterial({
-            size: this.pointSize * 0.05,
+            size: this.pointSize * 0.045,
             vertexColors: true,
             sizeAttenuation: true,
             transparent: true,
@@ -162,7 +208,7 @@ class PointCloudViewer {
     setPointSize(size) {
         this.pointSize = size;
         if (this.pointsMesh && this.pointsMesh.material) {
-            this.pointsMesh.material.size = size * 0.05;
+            this.pointsMesh.material.size = size * 0.045;
         }
     }
 
