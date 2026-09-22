@@ -20,12 +20,19 @@ class PointCloudViewer {
         this.pointSize = 3.5;
         this.currentView = 'follow'; // 'follow' | 'cockpit' | 'bev'
 
-        this.init();
+        if (this.container && typeof THREE !== 'undefined') {
+            try {
+                this.init();
+            } catch (e) {
+                console.warn('3D initialization deferred:', e);
+            }
+        }
     }
 
     init() {
-        const width = this.container.clientWidth || 600;
-        const height = this.container.clientHeight || 320;
+        if (!this.container || typeof THREE === 'undefined') return;
+        const width = this.container.clientWidth || 800;
+        const height = this.container.clientHeight || 400;
 
         // 1. Scene
         this.scene = new THREE.Scene();

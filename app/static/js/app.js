@@ -39,22 +39,38 @@ const hudFps = document.getElementById('hud-fps');
 const hudParams = document.getElementById('hud-params');
 const selectResolution = document.getElementById('select-resolution');
 
+// Helper for safe event listener attachment
+function onEvent(id, event, handler) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(event, handler);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Initialization
 // ─────────────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Initialize 3D WebGL Viewer
-    viewer3D = new PointCloudViewer('container-3d');
+    try {
+        // 1. Initialize 3D WebGL Viewer safely
+        if (typeof PointCloudViewer !== 'undefined') {
+            try {
+                viewer3D = new PointCloudViewer('container-3d');
+            } catch (err) {
+                console.warn('3D Viewer init:', err);
+            }
+        }
 
-    // 2. Setup Event Listeners
-    setupEventListeners();
+        // 2. Setup Event Listeners
+        setupEventListeners();
 
-    // 3. Load System Status & Preset Scenarios
-    await loadSystemStatus();
-    await loadPresets();
+        // 3. Load System Status & Preset Scenarios
+        await loadSystemStatus();
+        await loadPresets();
 
-    // 4. Trigger default prediction on Scene 1
-    loadPresetPrediction('scene1_urban');
+        // 4. Trigger default prediction on Scene 1
+        await loadPresetPrediction('scene1_urban');
+    } catch (err) {
+        console.error('DOMContentLoaded init error:', err);
+    }
 });
 
 function setupEventListeners() {
@@ -78,14 +94,15 @@ function setupEventListeners() {
     }
 
     // Cursor Hover Probe on Viewport Stage
-    viewportContainer.addEventListener('mousemove', handleViewportHover);
-    viewportContainer.addEventListener('mouseleave', () => {
-        probeTooltip.style.display = 'none';
-    });
+    if (viewportContainer) {
+        viewportContainer.addEventListener('mousemove', handleViewportHover);
+        viewportContainer.addEventListener('mouseleave', () => {
+            if (probeTooltip) probeTooltip.style.display = 'none';
+        });
+    }
 
     // File Upload
-    const fileInput = document.getElementById('file-input');
-    fileInput.addEventListener('change', (e) => {
+    onEvent('file-input', 'change', (e) => {
         if (e.target.files && e.target.files[0]) {
             uploadCustomImage(e.target.files[0]);
         }
@@ -93,48 +110,53 @@ function setupEventListeners() {
 
     // Drag and Drop
     const dropzone = document.getElementById('upload-dropzone');
-    dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.style.borderColor = '#06b6d4'; });
-    dropzone.addEventListener('dragleave', () => { dropzone.style.borderColor = ''; });
-    dropzone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropzone.style.borderColor = '';
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            uploadCustomImage(e.dataTransfer.files[0]);
-        }
-    });
+    if (dropzone) {
+        dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.style.borderColor = '#06b6d4'; });
+        dropzone.addEventListener('dragleave', () => { dropzone.style.borderColor = ''; });
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.style.borderColor = '';
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                uploadCustomImage(e.dataTransfer.files[0]);
+            }
+        });
+    }
 
-    // 3D Controls
-    document.getElementById('select-3d-colormap').addEventListener('change', (e) => {
+    // 3D Controls (Safely attached)
+    onEvent('select-3d-colormap', 'change', (e) => {
         if (viewer3D) viewer3D.setColorMode(e.target.value);
     });
 
-    document.getElementById('slider-point-size').addEventListener('input', (e) => {
+    onEvent('slider-point-size', 'input', (e) => {
         const size = parseFloat(e.target.value);
-        document.getElementById('lbl-point-size').textContent = `${size.toFixed(1)}px`;
+        const lbl = document.getElementById('lbl-point-size');
+        if (lbl) lbl.textContent = `${size.toFixed(1)}px`;
         if (viewer3D) viewer3D.setPointSize(size);
     });
 
-    document.getElementById('btn-follow-view').addEventListener('click', () => {
+    onEvent('btn-follow-view', 'click', () => {
         if (viewer3D) viewer3D.setFollowView();
     });
 
-    document.getElementById('btn-cockpit-view').addEventListener('click', () => {
+    onEvent('btn-cockpit-view', 'click', () => {
         if (viewer3D) viewer3D.setCockpitView();
     });
 
-    document.getElementById('btn-bev-view').addEventListener('click', () => {
+    onEvent('btn-bev-view', 'click', () => {
         if (viewer3D) viewer3D.setBEVView();
     });
 
-    document.getElementById('btn-reset-3d').addEventListener('click', () => {
+    onEvent('btn-reset-3d', 'click', () => {
         if (viewer3D) viewer3D.setFollowView();
     });
 
-    selectResolution.addEventListener('change', () => {
-        if (activePresetId) {
-            loadPresetPrediction(activePresetId);
-        }
-    });
+    if (selectResolution) {
+        selectResolution.addEventListener('change', () => {
+            if (activePresetId) {
+                loadPresetPrediction(activePresetId);
+            }
+        });
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

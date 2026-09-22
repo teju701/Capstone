@@ -14,6 +14,9 @@ import time
 import base64
 import numpy as np
 import cv2
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 from PIL import Image
@@ -309,12 +312,18 @@ async def predict_multi_task(
 
     # 5. Post-process Depth (Correct Metric Calibration: sigmoid * 79.0 + 1.0)
     raw_depth = depth_sigmoid.squeeze().cpu().numpy()
-    depth_meters = raw_depth_to_meters(raw_depth, d_min=1.0, d_max=80.0)
+    depth_meters = np.clip(raw_depth * 79.0 + 1.0, 1.0, 80.0)
 
-    # Colormap Depth (Turbo colormap: Near < 8m = Red/Orange, Mid 8-25m = Green/Cyan, Far > 25m = Blue)
-    depth_norm_vis = np.clip(1.0 - (depth_meters - 1.0) / 60.0, 0.0, 1.0)
-    depth_colormap = cv2.applyColorMap((depth_norm_vis * 255).astype(np.uint8), cv2.COLORMAP_TURBO)
-    depth_colormap = cv2.cvtColor(depth_colormap, cv2.COLOR_BGR2RGB)
+    # Dynamic Range Normalization (Near = 1.0 Warm/Red, Far = 0.0 Cool/Blue)
+    d_min_p = float(np.percentile(depth_meters, 2))
+    d_max_p = float(np.percentile(depth_meters, 98))
+    d_norm = np.clip((depth_meters - d_min_p) / max(d_max_p - d_min_p, 1e-4), 0.0, 1.0)
+    inv_norm = 1.0 - d_norm
+
+    # Render with Matplotlib Turbo colormap for rich, distinct visual depth
+    turbo_cmap = plt.get_cmap("turbo")
+    depth_rgba = turbo_cmap(inv_norm)
+    depth_colormap = (depth_rgba[:, :, :3] * 255).astype(np.uint8)
 
     # 6. Create Blended Overlays & Hazard Heatmap
     rgb_uint8 = (img_np * 255).astype(np.uint8)
