@@ -1,18 +1,20 @@
 ==========================================================
-  DEPTH BASELINE — EVALUATION REPORT
-  Cityscapes Val Set  |  500 images  |  512×1024
+       DEPTH BASELINE -- OFFICIAL EVALUATION REPORT
+       Cityscapes Val Set  |  500 images  |  1024x2048
 ==========================================================
   Checkpoint : checkpoints/depth/best_depth_model.pth
-  Depth range: 1.0–80.0 metres (normalised)
+  Depth range: 1.0-80.0 metres (normalised)
 ----------------------------------------------------------
-  AbsRel     : 0.0944   ← PRIMARY METRIC (lower better)
-  RMSE       : 0.0646   (lower better)
-  MAE        : 0.0319   (lower better)
-  SqRel      : 0.0106   (lower better)
+  AbsRel     : 0.1003   <- PRIMARY METRIC (lower better)
+  RMSE       : 0.0678   (lower better)
+  MAE        : 0.0334   (lower better)
+  SqRel      : 0.0100   (lower better)
 ----------------------------------------------------------
-  δ < 1.25   : 0.9054   (higher better, target > 0.85)
-  δ < 1.25²  : 0.9778   (higher better, target > 0.95)
-  δ < 1.25³  : 0.9918   (higher better, target > 0.99)
+  delta < 1.25   : 0.8956   (higher better, target > 0.85)
+  delta < 1.25^2 : 0.9779   (higher better, target > 0.95)
+  delta < 1.25^3 : 0.9924   (higher better, target > 0.99)
 ----------------------------------------------------------
   Valid pixel coverage: 72.9%  (Cityscapes disparity sparsity)
+----------------------------------------------------------
+  Evaluation Protocol: Global Valid-Pixel Accumulation
 ==========================================================

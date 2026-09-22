@@ -99,6 +99,27 @@ def compute_metrics(pred: torch.Tensor, target: torch.Tensor) -> dict:
     }
 
 
+def update_metric_totals(pred: torch.Tensor, target: torch.Tensor,
+                         totals: dict) -> None:
+    """Accumulate valid pixels globally for dataset-level depth metrics."""
+    pred = pred.squeeze(1)
+    mask = target > 0
+    p = pred[mask]
+    t = target[mask]
+    diff = torch.abs(p - t)
+
+    totals["abs_error"] += diff.sum().item()
+    totals["sq_error"] += ((p - t) ** 2).sum().item()
+    totals["abs_rel"] += (diff / (t + 1e-8)).sum().item()
+    totals["sq_rel"] += (((p - t) ** 2) / (t + 1e-8)).sum().item()
+    ratio = torch.max(p / (t + 1e-8), t / (p + 1e-8))
+    totals["delta1"] += (ratio < 1.25).sum().item()
+    totals["delta2"] += (ratio < 1.25 ** 2).sum().item()
+    totals["delta3"] += (ratio < 1.25 ** 3).sum().item()
+    totals["valid_pixels"] += mask.sum().item()
+    totals["total_pixels"] += target.numel()
+
+
 # ─────────────────────────────────────────
 # Visualisation — saves one sample
 # ─────────────────────────────────────────
@@ -171,9 +192,9 @@ def main():
     print(f"[INFO] Loaded best model from {BEST_CKPT}\n")
 
     # ── Evaluation ────────────────────────
-    accum = {k: 0.0 for k in
-             ["AbsRel", "RMSE", "MAE", "SqRel",
-              "δ<1.25", "δ<1.25²", "δ<1.25³", "coverage"]}
+    totals = {k: 0.0 for k in
+              ["abs_error", "sq_error", "abs_rel", "sq_rel",
+               "delta1", "delta2", "delta3", "valid_pixels", "total_pixels"]}
 
     vis_saved = False
 
@@ -184,23 +205,31 @@ def main():
 
             pred = model(img)
 
-            m = compute_metrics(pred, target)
-            for k in accum:
-                accum[k] += m[k]
+            update_metric_totals(pred, target, totals)
 
             # Save visualisation from the 5th sample
             if i == 4 and not vis_saved:
                 save_eval_sample(img, pred, target, VIS_PATH)
                 vis_saved = True
 
-    n = len(val_loader)
-    avg = {k: v / n for k, v in accum.items()}
+    valid_pixels = totals["valid_pixels"]
+    assert valid_pixels > 0, "No valid depth pixels found in the validation set"
+    avg = {
+        "AbsRel": totals["abs_rel"] / valid_pixels,
+        "RMSE": (totals["sq_error"] / valid_pixels) ** 0.5,
+        "MAE": totals["abs_error"] / valid_pixels,
+        "SqRel": totals["sq_rel"] / valid_pixels,
+        "δ<1.25": totals["delta1"] / valid_pixels,
+        "δ<1.25²": totals["delta2"] / valid_pixels,
+        "δ<1.25³": totals["delta3"] / valid_pixels,
+        "coverage": valid_pixels / totals["total_pixels"],
+    }
 
     # ── Report ────────────────────────────
     lines = []
     lines.append("=" * 58)
-    lines.append("  DEPTH BASELINE -- EVALUATION REPORT")
-    lines.append(f"  Cityscapes Val Set  |  500 images  |  {IMG_SIZE[0]}x{IMG_SIZE[1]}")
+    lines.append("       DEPTH BASELINE -- OFFICIAL EVALUATION REPORT")
+    lines.append(f"       Cityscapes Val Set  |  {len(val_loader)} images  |  {IMG_SIZE[0]}x{IMG_SIZE[1]}")
     lines.append("=" * 58)
     lines.append(f"  Checkpoint : {BEST_CKPT}")
     lines.append(f"  Depth range: {MIN_DEPTH}-{MAX_DEPTH} metres (normalised)")
@@ -215,6 +244,8 @@ def main():
     lines.append(f"  delta < 1.25^3 : {avg['δ<1.25³']:.4f}   (higher better, target > 0.99)")
     lines.append("-" * 58)
     lines.append(f"  Valid pixel coverage: {avg['coverage']*100:.1f}%  (Cityscapes disparity sparsity)")
+    lines.append("-" * 58)
+    lines.append("  Evaluation Protocol: Global Valid-Pixel Accumulation")
     lines.append("=" * 58)
 
     report = "\n".join(lines)

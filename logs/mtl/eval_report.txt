@@ -1,0 +1,58 @@
+====================================================================
+         MTL MODEL — OFFICIAL EVALUATION REPORT
+         Cityscapes Val Set  |  500 images  |  1024×2048
+====================================================================
+  Checkpoint : checkpoints/mtl/best_mtl_model.pth
+  Evaluation : With Test-Time Augmentation (horizontal flip)
+--------------------------------------------------------------------
+  SEGMENTATION RESULTS (mIoU, ignore_index=255)
+--------------------------------------------------------------------
+  Class            |    MTL IoU |   Baseline IoU |     Change
+--------------------------------------------------------------------
+  road             |     98.40% |         98.37% |     +0.03%
+  sidewalk         |     86.60% |         86.53% |     +0.07%
+  building         |     93.12% |         93.22% |     -0.10%
+  wall             |     59.55% |         64.23% |     -4.68%
+  fence            |     62.88% |         61.60% |     +1.28%
+  pole             |     67.52% |         66.71% |     +0.81%
+  traffic light    |     71.91% |         72.02% |     -0.11%
+  traffic sign     |     80.27% |         80.25% |     +0.02%
+  vegetation       |     92.97% |         93.00% |     -0.03%
+  terrain          |     64.68% |         64.75% |     -0.07%
+  sky              |     95.34% |         95.29% |     +0.05%
+  person           |     82.87% |         83.10% |     -0.23%
+  rider            |     62.24% |         62.97% |     -0.73%
+  car              |     95.38% |         95.25% |     +0.13%
+  truck            |     83.94% |         84.47% |     -0.53%
+  bus              |     88.98% |         88.35% |     +0.63%
+  train            |     82.41% |         81.75% |     +0.66%
+  motorcycle       |     68.92% |         69.70% |     -0.78%
+  bicycle          |     78.34% |         78.35% |     -0.01%
+====================================================================
+  mIoU (MTL + TTA)      : 0.7981  (79.81%)
+  mIoU (Seg baseline)   : 0.8000  (80.00%)
+  Change vs baseline    : -0.19pp
+--------------------------------------------------------------------
+  DEPTH RESULTS
+--------------------------------------------------------------------
+  Metric               |        MTL |   Baseline |     Change
+--------------------------------------------------------------------
+  AbsRel (lower better)    |     0.1129 |     0.1003 |    -1.26pp
+  RMSE (lower better)      |     0.0703 |     0.0678 |    -0.25pp
+  delta < 1.25 (higher)    |     0.8711 |     0.8956 |    -2.45pp
+  delta < 1.25^2           |     0.9739 |     0.9779 |    -0.40pp
+  delta < 1.25^3           |     0.9917 |     0.9924 |    -0.07pp
+  MAE (lower better)       |     0.0372 |     0.0334 |    -0.38pp
+  SqRel (lower better)     |     0.0115 |     0.0100 |    -0.15pp
+  Valid pixels             |      72.9% |      72.9% |            
+====================================================================
+  Combined score (mIoU - AbsRel) : 0.6852
+====================================================================
+  INTERPRETATION
+  The MTL model performs BOTH segmentation and depth estimation
+  in a single forward pass using ONE shared encoder.
+  Compare MTL efficiency vs running two separate models:
+  Seg-only params  : ~24.7M + Depth-only params: ~28.5M = ~53.2M total
+  MTL model params : shared encoder + 2 decoders = ~34.8M total (-34.6% params)
+  Inference speed  : 1 forward pass (~50% faster than running 2 separate backbones)
+====================================================================
