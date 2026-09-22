@@ -24,3 +24,8 @@ matplotlib==3.11.1
 # Progress Bars & Configuration
 tqdm==4.70.0
 PyYAML==6.0.3
+
+# Web Application & API Server
+fastapi>=0.110.0
+uvicorn>=0.28.0
+python-multipart>=0.0.9
