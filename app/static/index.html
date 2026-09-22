@@ -78,21 +78,60 @@
         <!-- Main Interactive Perception Stage -->
         <div class="stage-grid">
 
-            <!-- Left: 2D Perception Multi-View & Split Slider -->
-            <div class="perception-card panel-glow">
-                <div class="card-header">
-                    <div class="tab-group" id="view-tabs">
-                        <button class="tab-btn active" data-view="split">Split Interactive Comparison</button>
-                        <button class="tab-btn" data-view="seg">19-Class Semantic Mask</button>
-                        <button class="tab-btn" data-view="depth">Continuous Metric Depth</button>
-                        <button class="tab-btn" data-view="hazard">Collision Hazard Heatmap</button>
-                        <button class="tab-btn" data-view="rgb">Original RGB Camera</button>
+        <!-- Main Perception Cockpit Gallery -->
+        <div class="perception-card panel-glow">
+            
+            <!-- Top Controls & Mode Switcher Bar -->
+            <div class="card-header main-toolbar">
+                <div class="tab-group" id="view-tabs">
+                    <button class="tab-btn active" data-view="triple">⚡ Triple Simultaneous View (RGB + Seg + Depth)</button>
+                    <button class="tab-btn" data-view="split">↔️ Split Comparison</button>
+                    <button class="tab-btn" data-view="seg">🎨 Semantic Mask Only</button>
+                    <button class="tab-btn" data-view="depth">📏 Metric Depth Only</button>
+                    <button class="tab-btn" data-view="hazard">⚠️ Hazard Radar</button>
+                    <button class="tab-btn" data-view="3d">🌐 3D Point Cloud</button>
+                </div>
+                <div class="view-hint">Hover mouse over any image to probe live distance & class</div>
+            </div>
+
+            <!-- Viewport Stage -->
+            <div class="viewport-wrapper" id="viewport-container">
+
+                <!-- 1. Triple Simultaneous Gallery (RGB | Seg | Depth) -->
+                <div class="triple-stage" id="stage-triple">
+                    <!-- Panel 1: RGB -->
+                    <div class="triple-panel" data-panel="rgb">
+                        <div class="panel-tag">📷 CAMERA INPUT (RGB DASHCAM)</div>
+                        <div class="panel-img-wrap">
+                            <img id="triple-img-rgb" src="" alt="RGB Dashcam" class="triple-img">
+                        </div>
                     </div>
-                    <div class="view-hint">Hover mouse over road to probe live distance & class</div>
+
+                    <!-- Panel 2: Semantic Segmentation -->
+                    <div class="triple-panel" data-panel="seg">
+                        <div class="panel-tag">🎨 19-CLASS SEMANTIC SEGMENTATION</div>
+                        <div class="panel-img-wrap">
+                            <img id="triple-img-seg" src="" alt="Segmentation" class="triple-img">
+                        </div>
+                    </div>
+
+                    <!-- Panel 3: Metric Depth Map -->
+                    <div class="triple-panel" data-panel="depth">
+                        <div class="panel-tag">📏 CALIBRATED METRIC DEPTH (1m - 80m)</div>
+                        <div class="panel-img-wrap">
+                            <img id="triple-img-depth" src="" alt="Metric Depth" class="triple-img">
+                        </div>
+                        <!-- Depth Colorbar scale -->
+                        <div class="depth-colorbar">
+                            <span class="cb-label">&lt;5m (Close)</span>
+                            <div class="cb-gradient"></div>
+                            <span class="cb-label">&gt;60m (Far)</span>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="viewport-wrapper" id="viewport-container">
-                    <!-- Image Display Layer -->
+                <!-- 2. Single View / Split Stage -->
+                <div class="single-stage hidden" id="stage-single">
                     <div class="image-stage" id="image-stage">
                         <img id="view-primary" src="" alt="Perception Output" class="stage-img">
                         <img id="view-secondary" src="" alt="Perception Comparison" class="stage-img split-overlay">
@@ -103,90 +142,72 @@
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <!-- Cursor Hover Probe Tooltip -->
-                    <div class="hover-probe-tooltip" id="probe-tooltip">
-                        <div class="probe-header">
-                            <span class="probe-dot" id="probe-color-dot"></span>
-                            <span class="probe-class" id="probe-class-name">Car</span>
-                            <span class="probe-cat" id="probe-category">Vehicle</span>
+                <!-- 3. 3D WebGL Point Cloud Stage -->
+                <div class="stage-3d-wrapper hidden" id="stage-3d">
+                    <div class="stage-3d-toolbar">
+                        <div class="tools-left">
+                            <span class="badge-3d">60 FPS Navigable</span>
+                            <select id="select-3d-colormap" class="select-hud-mini">
+                                <option value="rgb" selected>RGB Photo Texture</option>
+                                <option value="seg">Semantic Class Colors</option>
+                                <option value="depth">Distance / Depth Ramp</option>
+                            </select>
                         </div>
-                        <div class="probe-body">
-                            <div class="probe-metric">
-                                <span class="lbl">Estimated Distance:</span>
-                                <span class="val text-cyan" id="probe-distance">12.4 m</span>
-                            </div>
-                            <div class="probe-metric">
-                                <span class="lbl">Safety Status:</span>
-                                <span class="val" id="probe-safety">SAFE</span>
-                            </div>
+                        <div class="tools-right">
+                            <button id="btn-follow-view" class="btn-tool" title="3D Follow Perspective">Follow 3D</button>
+                            <button id="btn-cockpit-view" class="btn-tool" title="Driver Windshield View">Cockpit</button>
+                            <button id="btn-bev-view" class="btn-tool" title="Top-Down Bird's Eye View">BEV</button>
+                            <button id="btn-reset-3d" class="btn-tool" title="Reset Camera">Reset</button>
                         </div>
                     </div>
-
-                    <!-- Loading Overlay -->
-                    <div class="stage-loading-overlay hidden" id="stage-loader">
-                        <div class="spinner-radar"></div>
-                        <span class="loading-msg">RUNNING MULTI-TASK VISION TRANSFORMER INFERENCE...</span>
+                    <div class="viewport-3d-container" id="container-3d">
+                        <div class="hint-overlay">
+                            <span>Click & Drag to Rotate • Right-Click to Pan • Scroll to Zoom</span>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Bottom View Control Bar -->
-                <div class="viewport-controls">
-                    <div class="slider-control" id="split-controls">
-                        <span class="control-label">Split Slider:</span>
-                        <input type="range" id="slider-split-pos" min="0" max="100" value="50" class="hud-slider">
-                        <span id="lbl-split-pos" class="slider-val">50%</span>
+                <!-- Cursor Hover Probe Tooltip (Unified across all views) -->
+                <div class="hover-probe-tooltip" id="probe-tooltip">
+                    <div class="probe-header">
+                        <span class="probe-dot" id="probe-color-dot"></span>
+                        <span class="probe-class" id="probe-class-name">Car</span>
+                        <span class="probe-cat" id="probe-category">Vehicle</span>
                     </div>
-                    <div class="legend-quick">
-                        <span class="legend-item"><span class="swatch-red"></span> &lt;5m Danger Zone</span>
-                        <span class="legend-item"><span class="swatch-yellow"></span> 5-15m Warning Zone</span>
-                        <span class="legend-item"><span class="swatch-green"></span> &gt;15m Safe Corridor</span>
+                    <div class="probe-body">
+                        <div class="probe-metric">
+                            <span class="lbl">True Distance:</span>
+                            <span class="val text-cyan" id="probe-distance">12.4 m</span>
+                        </div>
+                        <div class="probe-metric">
+                            <span class="lbl">Safety Status:</span>
+                            <span class="val" id="probe-safety">SAFE</span>
+                        </div>
                     </div>
+                </div>
+
+                <!-- Loading Overlay -->
+                <div class="stage-loading-overlay hidden" id="stage-loader">
+                    <div class="spinner-radar"></div>
+                    <span class="loading-msg">RUNNING MULTI-TASK VISION TRANSFORMER INFERENCE...</span>
                 </div>
             </div>
 
-            <!-- Right: Interactive 3D Point Cloud / Scene Mesh -->
-            <div class="perception-card panel-glow">
-                <div class="card-header">
-                    <div class="header-title-group">
-                        <div class="title-with-icon">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
-                            <span class="card-title">3D SCENE RECONSTRUCTION (WebGL Point Cloud)</span>
-                        </div>
-                        <span class="badge-3d">60 FPS Navigable</span>
-                    </div>
-
-                    <div class="viewport-tools">
-                        <select id="select-3d-colormap" class="select-hud-mini">
-                            <option value="rgb" selected>RGB Photo Texture</option>
-                            <option value="seg">Semantic Class Colors</option>
-                            <option value="depth">Distance / Depth Ramp</option>
-                        </select>
-                        <button id="btn-follow-view" class="btn-tool" title="3D Follow Perspective">Follow 3D</button>
-                        <button id="btn-cockpit-view" class="btn-tool" title="Driver Windshield View">Cockpit</button>
-                        <button id="btn-bev-view" class="btn-tool" title="Top-Down Bird's Eye View">BEV</button>
-                        <button id="btn-reset-3d" class="btn-tool" title="Reset Camera">Reset</button>
-                    </div>
+            <!-- Bottom View Control Bar -->
+            <div class="viewport-controls">
+                <div class="slider-control" id="split-controls" style="display: none;">
+                    <span class="control-label">Split Slider:</span>
+                    <input type="range" id="slider-split-pos" min="0" max="100" value="50" class="hud-slider">
+                    <span id="lbl-split-pos" class="slider-val">50%</span>
                 </div>
-
-                <div class="viewport-3d-wrapper" id="container-3d">
-                    <div class="hint-overlay">
-                        <span>Click & Drag to Rotate • Right-Click to Pan • Scroll to Zoom</span>
-                    </div>
-                </div>
-
-                <div class="viewport-controls">
-                    <div class="slider-control">
-                        <span class="control-label">Point Density:</span>
-                        <input type="range" id="slider-point-size" min="1" max="6" value="3" step="0.5" class="hud-slider">
-                        <span id="lbl-point-size" class="slider-val">3.0px</span>
-                    </div>
-                    <div class="telemetry-compact">
-                        <span id="lbl-point-count">Points: --</span>
-                    </div>
+                <div class="legend-quick">
+                    <span class="legend-item"><span class="swatch-red"></span> &lt;5m Danger Zone</span>
+                    <span class="legend-item"><span class="swatch-yellow"></span> 5-15m Warning Zone</span>
+                    <span class="legend-item"><span class="swatch-green"></span> &gt;15m Safe Corridor</span>
                 </div>
             </div>
-
         </div>
 
         <!-- Bottom Telemetry & Analytics Dashboard -->
@@ -209,7 +230,7 @@
                         <span class="r-val text-blue" id="stat-max-dist">-- m</span>
                     </div>
                     <div class="radar-stat">
-                        <span class="r-lbl">Dynamic Hazards &lt;10m</span>
+                        <span class="r-lbl">Dynamic Hazards &lt;15m</span>
                         <span class="r-val text-yellow" id="stat-hazards">--</span>
                     </div>
                 </div>

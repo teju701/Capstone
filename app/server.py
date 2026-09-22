@@ -106,14 +106,12 @@ app.add_middleware(
 # ─────────────────────────────────────────────────────────────────────────────
 # Helper Functions: Metric Depth, Overlays, and 3D Point Cloud
 # ─────────────────────────────────────────────────────────────────────────────
-def inverse_depth_to_meters(inv_depth: np.ndarray, d_min: float = 1.0, d_max: float = 80.0) -> np.ndarray:
+def raw_depth_to_meters(depth_sigmoid: np.ndarray, d_min: float = 1.0, d_max: float = 80.0) -> np.ndarray:
     """
-    Calibrates continuous inverse depth in [0, 1] into physical distance in meters [1.0m, 80.0m].
-    Formula: Z = 1.0 / (inv_depth * (1/d_min - 1/d_max) + 1/d_max)
+    Directly un-normalizes network depth sigmoid output [0, 1] into physical distance in meters [1.0m, 80.0m].
+    Matches Cityscapes dataset depth encoding: metric_depth = sigmoid * (d_max - d_min) + d_min
     """
-    alpha = (1.0 / d_min) - (1.0 / d_max)
-    beta  = 1.0 / d_max
-    meters = 1.0 / (inv_depth * alpha + beta + 1e-8)
+    meters = depth_sigmoid * (d_max - d_min) + d_min
     return np.clip(meters, d_min, d_max)
 
 def array_to_base64_png(arr: np.ndarray) -> str:
@@ -309,12 +307,12 @@ async def predict_multi_task(
     pred_classes = torch.argmax(seg_logits, dim=1).squeeze(0).cpu().numpy().astype(np.uint8)
     seg_color = COLOR_PALETTE[pred_classes]
 
-    # 5. Post-process Depth
-    inv_depth = depth_sigmoid.squeeze().cpu().numpy()
-    depth_meters = inverse_depth_to_meters(inv_depth, d_min=1.0, d_max=80.0)
+    # 5. Post-process Depth (Correct Metric Calibration: sigmoid * 79.0 + 1.0)
+    raw_depth = depth_sigmoid.squeeze().cpu().numpy()
+    depth_meters = raw_depth_to_meters(raw_depth, d_min=1.0, d_max=80.0)
 
-    # Colormap Depth (Turbo colormap: near = red/orange, mid = green/cyan, far = dark blue)
-    depth_norm_vis = np.clip(1.0 - (depth_meters - 1.0) / 79.0, 0.0, 1.0)
+    # Colormap Depth (Turbo colormap: Near < 8m = Red/Orange, Mid 8-25m = Green/Cyan, Far > 25m = Blue)
+    depth_norm_vis = np.clip(1.0 - (depth_meters - 1.0) / 60.0, 0.0, 1.0)
     depth_colormap = cv2.applyColorMap((depth_norm_vis * 255).astype(np.uint8), cv2.COLORMAP_TURBO)
     depth_colormap = cv2.cvtColor(depth_colormap, cv2.COLOR_BGR2RGB)
 
@@ -341,13 +339,27 @@ async def predict_multi_task(
         })
     class_distribution.sort(key=lambda x: x["percentage"], reverse=True)
 
-    # Depth statistics in meters
+    # Hazard & obstacle detection using connected components
+    dynamic_classes = [11, 12, 13, 14, 15, 17, 18] # person, rider, car, truck, bus, motorcycle, bicycle
+    is_dynamic = np.isin(pred_classes, dynamic_classes)
+    near_hazards_mask = is_dynamic & (depth_meters < 15.0)
+
+    # Count distinct hazard objects
+    num_labels, labels, stats_cc, _ = cv2.connectedComponentsWithStats(near_hazards_mask.astype(np.uint8), connectivity=8)
+    detected_hazards_count = sum(1 for i in range(1, num_labels) if stats_cc[i, cv2.CC_STAT_AREA] > 60)
+
+    road_mask = (pred_classes == 0)
+    road_dist = float(np.median(depth_meters[road_mask])) if np.any(road_mask) else 12.0
+
+    obstacle_mask = np.isin(pred_classes, [4, 5, 6, 7, 11, 12, 13, 14, 15, 17, 18])
+    min_obstacle_dist = float(np.min(depth_meters[obstacle_mask])) if np.any(obstacle_mask) else float(np.min(depth_meters))
+
     depth_stats = {
-        "min_distance_m": round(float(np.min(depth_meters)), 2),
-        "max_distance_m": round(float(np.max(depth_meters)), 2),
-        "median_distance_m": round(float(np.median(depth_meters)), 2),
-        "road_distance_m": round(float(np.median(depth_meters[pred_classes == 0])) if 0 in unique_classes else 0.0, 2),
-        "obstacles_under_10m": int(np.sum((depth_meters < 10.0) & np.isin(pred_classes, [11, 12, 13, 14, 15, 17, 18])))
+        "min_distance_m": round(min_obstacle_dist, 1),
+        "max_distance_m": round(float(np.max(depth_meters)), 1),
+        "median_distance_m": round(float(np.median(depth_meters)), 1),
+        "road_distance_m": round(road_dist, 1),
+        "obstacles_under_15m": detected_hazards_count
     }
 
     # 9. Downsampled Depth & Class Matrix for Client-Side Cursor Hover Probing (128x256 grid)

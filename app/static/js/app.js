@@ -5,11 +5,19 @@
  */
 
 let currentData = null;
-let currentView = 'split'; // 'split' | 'seg' | 'depth' | 'hazard' | 'rgb'
+let currentView = 'triple'; // 'triple' | 'split' | 'seg' | 'depth' | 'hazard' | '3d'
 let viewer3D = null;
 let activePresetId = null;
 
 // DOM Elements
+const stageTriple = document.getElementById('stage-triple');
+const stageSingle = document.getElementById('stage-single');
+const stage3D = document.getElementById('stage-3d');
+
+const tripleImgRgb = document.getElementById('triple-img-rgb');
+const tripleImgSeg = document.getElementById('triple-img-seg');
+const tripleImgDepth = document.getElementById('triple-img-depth');
+
 const imgPrimary = document.getElementById('view-primary');
 const imgSecondary = document.getElementById('view-secondary');
 const splitDivider = document.getElementById('split-divider');
@@ -61,13 +69,15 @@ function setupEventListeners() {
     });
 
     // Split Slider Control
-    sliderSplit.addEventListener('input', (e) => {
-        const val = e.target.value;
-        lblSplit.textContent = `${val}%`;
-        setSplitPosition(val);
-    });
+    if (sliderSplit) {
+        sliderSplit.addEventListener('input', (e) => {
+            const val = e.target.value;
+            if (lblSplit) lblSplit.textContent = `${val}%`;
+            setSplitPosition(val);
+        });
+    }
 
-    // Cursor Hover Probe on 2D Image Stage
+    // Cursor Hover Probe on Viewport Stage
     viewportContainer.addEventListener('mousemove', handleViewportHover);
     viewportContainer.addEventListener('mouseleave', () => {
         probeTooltip.style.display = 'none';
@@ -241,22 +251,48 @@ function handlePredictionResult(data) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Perception View & Split Slider Management
+// Perception View Management
 // ─────────────────────────────────────────────────────────────────────────────
 function updatePerceptionView() {
     if (!currentData || !currentData.images) return;
 
     const splitControls = document.getElementById('split-controls');
 
-    if (currentView === 'split') {
+    if (currentView === 'triple') {
+        stageTriple.classList.remove('hidden');
+        stageSingle.classList.add('hidden');
+        stage3D.classList.add('hidden');
+        splitControls.style.display = 'none';
+
+        tripleImgRgb.src = currentData.images.rgb;
+        tripleImgSeg.src = currentData.images.segmentation;
+        tripleImgDepth.src = currentData.images.depth;
+    } else if (currentView === '3d') {
+        stageTriple.classList.add('hidden');
+        stageSingle.classList.add('hidden');
+        stage3D.classList.remove('hidden');
+        splitControls.style.display = 'none';
+
+        if (viewer3D) {
+            setTimeout(() => viewer3D.onResize(), 50);
+        }
+    } else if (currentView === 'split') {
+        stageTriple.classList.add('hidden');
+        stageSingle.classList.remove('hidden');
+        stage3D.classList.add('hidden');
         splitControls.style.display = 'flex';
+
         imgPrimary.src = currentData.images.rgb;
         imgSecondary.src = currentData.images.blend_seg;
         imgSecondary.style.display = 'block';
         splitDivider.style.display = 'block';
         setSplitPosition(sliderSplit.value);
     } else {
+        stageTriple.classList.add('hidden');
+        stageSingle.classList.remove('hidden');
+        stage3D.classList.add('hidden');
         splitControls.style.display = 'none';
+
         imgSecondary.style.display = 'none';
         splitDivider.style.display = 'none';
 
@@ -268,8 +304,10 @@ function updatePerceptionView() {
 }
 
 function setSplitPosition(percent) {
-    imgSecondary.style.clipPath = `polygon(0 0, ${percent}% 0, ${percent}% 100%, 0 100%)`;
-    splitDivider.style.left = `${percent}%`;
+    if (imgSecondary && splitDivider) {
+        imgSecondary.style.clipPath = `polygon(0 0, ${percent}% 0, ${percent}% 100%, 0 100%)`;
+        splitDivider.style.left = `${percent}%`;
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -278,7 +316,14 @@ function setSplitPosition(percent) {
 function handleViewportHover(e) {
     if (!currentData || !currentData.probe) return;
 
-    const rect = viewportContainer.getBoundingClientRect();
+    // Find targeted image area (either in triple panels or single stage)
+    const targetWrap = e.target.closest('.panel-img-wrap') || e.target.closest('#image-stage');
+    if (!targetWrap) {
+        probeTooltip.style.display = 'none';
+        return;
+    }
+
+    const rect = targetWrap.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
@@ -305,18 +350,17 @@ function handleViewportHover(e) {
     probeSafety.textContent = safety.text;
     probeSafety.className = `val ${safety.class}`;
 
-    // Position tooltip
-    probeTooltip.style.display = 'block';
-    const tipW = 180;
-    const tipH = 90;
-    let left = mouseX + 15;
-    let top = mouseY + 15;
+    // Position tooltip relative to viewportContainer
+    const cRect = viewportContainer.getBoundingClientRect();
+    let left = e.clientX - cRect.left + 15;
+    let top = e.clientY - cRect.top + 15;
 
-    if (left + tipW > rect.width) left = mouseX - tipW - 15;
-    if (top + tipH > rect.height) top = mouseY - tipH - 15;
+    if (left + 180 > cRect.width) left = e.clientX - cRect.left - 195;
+    if (top + 90 > cRect.height) top = e.clientY - cRect.top - 105;
 
     probeTooltip.style.left = `${left}px`;
     probeTooltip.style.top = `${top}px`;
+    probeTooltip.style.display = 'block';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -329,10 +373,12 @@ function updateAnalytics(stats) {
     document.getElementById('stat-min-dist').textContent = `${stats.depth.min_distance_m} m`;
     document.getElementById('stat-road-dist').textContent = `${stats.depth.road_distance_m} m`;
     document.getElementById('stat-max-dist').textContent = `${stats.depth.max_distance_m} m`;
-    document.getElementById('stat-hazards').textContent = `${stats.depth.obstacles_under_10m} items`;
+    
+    const hazardCount = stats.depth.obstacles_under_15m;
+    document.getElementById('stat-hazards').textContent = hazardCount > 0 ? `${hazardCount} Detected` : `0 (Clear)`;
 
     // Hazard Progress Bar
-    const hazardScore = Math.min(100, stats.depth.obstacles_under_10m * 25);
+    const hazardScore = Math.min(100, hazardCount * 33);
     document.getElementById('hazard-bar-fill').style.width = `${hazardScore}%`;
 
     // 19-Class Semantic Composition Bars

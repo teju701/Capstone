@@ -288,15 +288,9 @@ body.dark-theme {
    Perception Stage Grid (2D Multi-View + 3D Viewport)
    ───────────────────────────────────────────────────────────────────────────── */
 .stage-grid {
-    display: grid;
-    grid-template-columns: 1.15fr 0.85fr;
+    display: flex;
+    flex-direction: column;
     gap: 18px;
-}
-
-@media (max-width: 1200px) {
-    .stage-grid {
-        grid-template-columns: 1fr;
-    }
 }
 
 .perception-card {
@@ -326,6 +320,7 @@ body.dark-theme {
 .tab-group {
     display: flex;
     gap: 6px;
+    flex-wrap: wrap;
 }
 
 .tab-btn {
@@ -334,7 +329,7 @@ body.dark-theme {
     color: var(--text-secondary);
     font-size: 11px;
     font-weight: 600;
-    padding: 5px 12px;
+    padding: 6px 12px;
     border-radius: var(--radius-sm);
     cursor: pointer;
     transition: all 0.2s ease;
@@ -414,14 +409,101 @@ body.dark-theme {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   2D Viewport & Interactive Split Slider
+   Triple Simultaneous Stage Layout (RGB + Seg + Depth)
    ───────────────────────────────────────────────────────────────────────────── */
 .viewport-wrapper {
     position: relative;
     width: 100%;
-    aspect-ratio: 2 / 1;
     background: #000;
     overflow: hidden;
+}
+
+.triple-stage {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    padding: 12px;
+    width: 100%;
+    box-sizing: border-box;
+    background: #040711;
+}
+
+@media (max-width: 900px) {
+    .triple-stage {
+        grid-template-columns: 1fr;
+    }
+}
+
+.triple-panel {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+.panel-tag {
+    background: rgba(15, 23, 42, 0.95);
+    border-bottom: 1px solid var(--border-color);
+    padding: 6px 10px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--accent-cyan);
+    font-family: var(--font-mono);
+}
+
+.panel-img-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 2 / 1;
+    background: #000;
+    cursor: crosshair;
+}
+
+.triple-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    user-select: none;
+}
+
+.depth-colorbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 10px;
+    background: rgba(15, 23, 42, 0.85);
+    border-top: 1px solid var(--border-color);
+    font-size: 9px;
+    font-family: var(--font-mono);
+}
+
+.cb-label {
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.cb-gradient {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #ff2a2a, #ff9f1c, #2ec4b6, #3a86ff, #03045e);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Single Viewport & Interactive Split Slider
+   ───────────────────────────────────────────────────────────────────────────── */
+.single-stage {
+    width: 100%;
+    aspect-ratio: 2 / 1;
+    position: relative;
+    background: #000;
     cursor: crosshair;
 }
 
@@ -457,6 +539,49 @@ body.dark-theme {
     box-shadow: 0 0 8px var(--accent-cyan);
     pointer-events: none;
     z-index: 20;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   3D Viewport
+   ───────────────────────────────────────────────────────────────────────────── */
+.stage-3d-wrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    background: #05070d;
+}
+
+.stage-3d-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px;
+    background: rgba(15, 23, 42, 0.95);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tools-left, .tools-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.viewport-3d-container {
+    width: 100%;
+    aspect-ratio: 2 / 1;
+    position: relative;
+    background: #05070d;
+}
+
+.viewport-3d-container canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+
+.hidden {
+    display: none !important;
 }
 
 .divider-handle {
