@@ -401,7 +401,7 @@ python scripts/train_depth.py
 ---
 
 ## Authors & Acknowledgments
-* **Engineering Capstone Team**
+* **Engineering Capstone Team **
 * **Project:** Multi-Task Learning for Dense Scene Understanding in Autonomous Driving
 * **Dataset:** Cordts et al., *The Cityscapes Dataset for Semantic Urban Scene Understanding*, CVPR 2016.
 * **Backbone:** Xie et al., *SegFormer: Simple and Efficient Design for Semantic Segmentation with Transformers*, NeurIPS 2021.
